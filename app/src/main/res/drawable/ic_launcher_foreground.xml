@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Centered phone handset inside the 66dp safe zone (21dp margin on each side) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M65.5,58.8 C62.5,58.8 59.6,58.3 56.9,57.4 C56.0,57.1 55.0,57.3 54.4,58.0 L50.2,62.2 C43.8,58.9 39.1,54.2 35.8,47.8 L40.0,43.6 C40.7,43.0 40.9,42.0 40.6,41.1 C39.7,38.4 39.2,35.5 39.2,32.5 C39.2,30.6 37.6,29.0 35.7,29.0 L29.5,29.0 C27.6,29.0 26.0,30.6 26.0,32.5 C26.0,54.3 43.7,72.0 65.5,72.0 C67.4,72.0 69.0,70.4 69.0,68.5 L69.0,62.3 C69.0,60.4 67.4,58.8 65.5,58.8 Z" />
+</vector>

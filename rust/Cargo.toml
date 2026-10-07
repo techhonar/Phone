@@ -1,0 +1,21 @@
+[package]
+name = "phone_engine"
+version = "1.0.0"
+edition = "2021"
+authors = ["Samsung Phone Engineering Team"]
+description = "High-performance T9 search, DTMF synthesis, and telephony call state machine in Rust"
+
+[lib]
+name = "phone_engine"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni = { version = "0.21", default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

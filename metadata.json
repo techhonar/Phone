@@ -1,0 +1,7 @@
+{
+  "name": "Samsung Phone",
+  "description": "A Samsung One UI styled Phone dialer with T9 search, DTMF tones, Recents, Contacts, Speed Dial, and Rust/Kotlin architecture",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
