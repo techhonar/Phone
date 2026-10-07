@@ -11,7 +11,7 @@ use crate::contacts;
 
 #[no_mangle]
 pub extern "system" fn Java_com_example_rust_RustPhoneBridge_nativeGetEngineVersion(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
 ) -> jstring {
     let version = "Rust PhoneEngine v1.0.0 (Samsung One UI Edition)";

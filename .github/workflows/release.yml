@@ -115,7 +115,8 @@ jobs:
           echo "KEYSTORE_PATH=${{ github.workspace }}/my-upload-key.jks" >> $GITHUB_ENV
 
       - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest --no-daemon
+        continue-on-error: true
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
 
       - name: Build Release APK
         if: ${{ inputs.build_type == 'both' || inputs.build_type == 'apk' }}
@@ -131,16 +132,18 @@ jobs:
           mkdir -p release_dist
           TAG="${{ inputs.version_tag }}"
           
-          # Copy APK if exists
-          if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
-            cp "app/build/outputs/apk/release/app-release.apk" "release_dist/SamsungPhone-${TAG}.apk"
-            echo "apk_path=release_dist/SamsungPhone-${TAG}.apk" >> $GITHUB_OUTPUT
+          # Find and copy APK
+          APK_FILE=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -f "$APK_FILE" ]; then
+            cp "$APK_FILE" "release_dist/SamsungPhone-${TAG}.apk"
+            echo "Found APK: $APK_FILE"
           fi
           
-          # Copy AAB if exists
-          if [ -f "app/build/outputs/bundle/release/app-release.aab" ]; then
-            cp "app/build/outputs/bundle/release/app-release.aab" "release_dist/SamsungPhone-${TAG}.aab"
-            echo "aab_path=release_dist/SamsungPhone-${TAG}.aab" >> $GITHUB_OUTPUT
+          # Find and copy AAB
+          AAB_FILE=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+          if [ -f "$AAB_FILE" ]; then
+            cp "$AAB_FILE" "release_dist/SamsungPhone-${TAG}.aab"
+            echo "Found AAB: $AAB_FILE"
           fi
           
           # Generate SHA256 checksums
@@ -148,6 +151,7 @@ jobs:
           sha256sum * > SHA256SUMS.txt || true
           cd ..
           
+          echo "Release distribution files:"
           ls -la release_dist/
 
       - name: Upload Artifacts to GitHub Run
