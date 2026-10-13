@@ -2,6 +2,8 @@ package com.example.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -21,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhoneForwarded
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Schedule
@@ -59,6 +63,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.PhoneTab
+import com.example.ui.theme.GoogleCallGreen
+import com.example.ui.theme.GoogleNavContainerDark
+import com.example.ui.theme.GoogleNavContainerLight
+import com.example.ui.theme.GoogleNavSelectedDark
+import com.example.ui.theme.GoogleNavSelectedLight
 import com.example.ui.theme.SamsungGreen
 import com.example.ui.theme.SamsungGreenDark
 import com.example.ui.theme.SamsungRed
@@ -168,7 +177,91 @@ fun OneUiHeader(
 }
 
 /**
- * Samsung Keypad Button with Large Digit & Subtitle Letters
+ * Google Dialer style top bar (reference screenshot):
+ * no title, just Search + overflow menu actions aligned to the end.
+ * The overflow menu keeps the existing Speed dial / Settings / Add contact actions.
+ */
+@Composable
+fun GoogleDialerTopBar(
+    onMenuSpeedDial: () -> Unit,
+    onMenuSettings: () -> Unit,
+    onAddContact: (() -> Unit)? = null,
+    onSearch: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (onSearch != null) {
+            IconButton(
+                onClick = onSearch,
+                modifier = Modifier.testTag("search_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search contacts",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+
+        Box {
+            IconButton(
+                onClick = { menuExpanded = true },
+                modifier = Modifier.testTag("menu_overflow_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Menu",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                if (onAddContact != null) {
+                    DropdownMenuItem(
+                        text = { Text("Add to contacts") },
+                        onClick = {
+                            menuExpanded = false
+                            onAddContact()
+                        }
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text("Speed dial numbers") },
+                    onClick = {
+                        menuExpanded = false
+                        onMenuSpeedDial()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Settings") },
+                    onClick = {
+                        menuExpanded = false
+                        onMenuSettings()
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Google Dialer style flat keypad button (reference screenshot):
+ * no circle / card background, just a large white digit with small
+ * grey sub-letters underneath. Press state is a soft rounded highlight.
  */
 @Composable
 fun SamsungDialButton(
@@ -184,19 +277,19 @@ fun SamsungDialButton(
 
     val bgColor by animateColorAsState(
         targetValue = if (isPressed) {
-            MaterialTheme.colorScheme.surfaceVariant
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
         } else {
-            MaterialTheme.colorScheme.surface
+            Color.Transparent
         },
         label = "keyBg"
     )
 
-    Surface(
-        shape = CircleShape,
-        color = bgColor,
-        shadowElevation = if (isPressed) 0.dp else 1.dp,
+    Box(
+        contentAlignment = Alignment.Center,
         modifier = modifier
-            .size(76.dp)
+            .size(width = 104.dp, height = 68.dp)
+            .clip(RoundedCornerShape(34.dp))
+            .background(bgColor)
             .testTag("dial_key_$digit")
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -215,15 +308,14 @@ fun SamsungDialButton(
             }
     ) {
         Column(
-            modifier = Modifier.padding(2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = digit.toString(),
                 style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 30.sp
+                    fontWeight = FontWeight.Normal,
+                    fontSize = 36.sp
                 ),
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -233,27 +325,29 @@ fun SamsungDialButton(
                     imageVector = Icons.Default.Voicemail,
                     contentDescription = "Voicemail",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(15.dp)
                 )
             } else if (subLetters.isNotEmpty()) {
                 Text(
                     text = subLetters,
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.2.sp,
-                        fontSize = 10.sp
+                        fontWeight = FontWeight.Normal,
+                        letterSpacing = 1.6.sp,
+                        fontSize = if (subLetters == "+") 14.sp else 10.sp
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(15.dp))
             }
         }
     }
 }
 
 /**
- * Green Samsung Call Button with handset icon and SIM badge
+ * Google Dialer style call button (reference screenshot):
+ * a plain green circle with a white handset, no shadow and no SIM badge.
+ * Long-press keeps the old SIM-slot toggle that used to live on the badge.
  */
 @Composable
 fun SamsungCallButton(
@@ -264,51 +358,30 @@ fun SamsungCallButton(
 ) {
     val haptic = LocalHapticFeedback.current
 
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(74.dp)
-                .shadow(elevation = 6.dp, shape = CircleShape, spotColor = SamsungGreen)
-                .background(SamsungGreen, CircleShape)
-                .clip(CircleShape)
-                .clickable {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(64.dp)
+            .background(GoogleCallGreen, CircleShape)
+            .clip(CircleShape)
+            .combinedClickable(
+                onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onCallClick()
+                },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSimToggle()
                 }
-                .testTag("call_action_button")
-        ) {
-            Icon(
-                imageVector = Icons.Default.Call,
-                contentDescription = "Call",
-                tint = Color.White,
-                modifier = Modifier.size(34.dp)
             )
-
-            // SIM badge
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = SamsungGreenDark,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 4.dp, bottom = 4.dp)
-                    .clickable { onSimToggle() }
-            ) {
-                Text(
-                    text = "SIM $simSlot",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                )
-            }
-        }
+            .testTag("call_action_button")
+    ) {
+        Icon(
+            imageVector = Icons.Default.Call,
+            contentDescription = "Call (SIM $simSlot)",
+            tint = Color.White,
+            modifier = Modifier.size(30.dp)
+        )
     }
 }
 
@@ -358,7 +431,11 @@ fun ContactAvatar(
 }
 
 /**
- * Samsung Bottom Navigation Bar
+ * Google Dialer style bottom navigation (reference screenshot):
+ * a floating rounded pill with three tabs - Keypad, Recents, Contacts.
+ * The selected tab sits on a lighter pill inside the container.
+ * (Places is no longer shown here, to match the screenshot; its
+ * screen and PhoneTab.PLACES entry are left intact.)
  */
 @Composable
 fun SamsungBottomNavBar(
@@ -367,65 +444,86 @@ fun SamsungBottomNavBar(
     missedCallsCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 8.dp,
-        modifier = modifier.testTag("bottom_nav_bar")
-    ) {
-        val items = listOf(
-            Triple(PhoneTab.KEYPAD, "Keypad", Pair(Icons.Default.Dialpad, Icons.Outlined.Dialpad)),
-            Triple(PhoneTab.RECENTS, "Recents", Pair(Icons.Default.Schedule, Icons.Outlined.Schedule)),
-            Triple(PhoneTab.CONTACTS, "Contacts", Pair(Icons.Default.Person, Icons.Outlined.Person)),
-            Triple(PhoneTab.PLACES, "Places", Pair(Icons.Default.Place, Icons.Outlined.Place))
-        )
+    val isDark = isSystemInDarkTheme()
+    val containerColor = if (isDark) GoogleNavContainerDark else GoogleNavContainerLight
+    val selectedColor = if (isDark) GoogleNavSelectedDark else GoogleNavSelectedLight
+    val selectedContent = MaterialTheme.colorScheme.onSurface
+    val unselectedContent = MaterialTheme.colorScheme.onSurfaceVariant
 
-        items.forEach { (tab, label, icons) ->
-            val isSelected = selectedTab == tab
-            NavigationBarItem(
-                selected = isSelected,
-                onClick = { onTabSelected(tab) },
-                icon = {
-                    Box {
-                        Icon(
-                            imageVector = if (isSelected) icons.first else icons.second,
-                            contentDescription = label,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        if (tab == PhoneTab.RECENTS && missedCallsCount > 0) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .size(16.dp)
-                                    .background(SamsungRed, CircleShape)
-                            ) {
-                                Text(
-                                    text = missedCallsCount.toString(),
-                                    color = Color.White,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 52.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(36.dp),
+            color = containerColor,
+            modifier = Modifier.testTag("bottom_nav_bar")
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(6.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val items = listOf(
+                    Triple(PhoneTab.KEYPAD, "Keypad", Icons.Default.Dialpad),
+                    Triple(PhoneTab.RECENTS, "Recents", Icons.Default.PhoneForwarded),
+                    Triple(PhoneTab.CONTACTS, "Contacts", Icons.Outlined.Person)
+                )
+
+                items.forEach { (tab, label, icon) ->
+                    val isSelected = selectedTab == tab
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(28.dp))
+                            .background(if (isSelected) selectedColor else Color.Transparent)
+                            .clickable { onTabSelected(tab) }
+                            .padding(vertical = 7.dp)
+                            .testTag("nav_tab_${tab.name.lowercase()}")
+                    ) {
+                        Box {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = label,
+                                tint = if (isSelected) selectedContent else unselectedContent,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            if (tab == PhoneTab.RECENTS && missedCallsCount > 0) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(16.dp)
+                                        .background(SamsungRed, CircleShape)
+                                ) {
+                                    Text(
+                                        text = missedCallsCount.toString(),
+                                        color = Color.White,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
-                    }
-                },
-                label = {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                fontSize = 11.sp
+                            ),
+                            color = if (isSelected) selectedContent else unselectedContent
                         )
-                    )
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                    selectedIconColor = SamsungGreen,
-                    selectedTextColor = SamsungGreen,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                ),
-                modifier = Modifier.testTag("nav_tab_${tab.name.lowercase()}")
-            )
+                    }
+                }
+            }
         }
     }
 }
