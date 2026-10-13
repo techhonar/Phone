@@ -2,7 +2,6 @@ package com.example.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -364,16 +363,18 @@ fun SamsungCallButton(
             .size(64.dp)
             .background(GoogleCallGreen, CircleShape)
             .clip(CircleShape)
-            .combinedClickable(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onCallClick()
-                },
-                onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onSimToggle()
-                }
-            )
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onCallClick()
+                    },
+                    onLongPress = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onSimToggle()
+                    }
+                )
+            }
             .testTag("call_action_button")
     ) {
         Icon(
