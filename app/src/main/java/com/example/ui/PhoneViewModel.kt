@@ -27,7 +27,7 @@ enum class PhoneTab {
 }
 
 enum class RecentsFilter {
-    ALL, MISSED
+    ALL, MISSED, REJECTED, OUTGOING, INCOMING, VOICEMAIL
 }
 
 sealed class ActiveCallState {
@@ -438,6 +438,20 @@ class PhoneViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.deleteCallLog(id)
         }
+    }
+
+    fun deleteCallLogs(ids: Collection<String>) {
+        viewModelScope.launch {
+            ids.forEach { repository.deleteCallLog(it) }
+        }
+        _expandedLogId.value = null
+    }
+
+    fun deleteContacts(ids: Collection<String>) {
+        viewModelScope.launch {
+            ids.forEach { repository.deleteContact(it) }
+        }
+        closeContactDetail()
     }
 
     fun clearAllCallHistory() {

@@ -19,8 +19,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Dialpad
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhoneForwarded
 import androidx.compose.material.icons.filled.Search
@@ -63,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.PhoneTab
 import com.example.ui.theme.GoogleCallGreen
+import com.example.ui.theme.GoogleMeetYellow
 import com.example.ui.theme.GoogleNavContainerDark
 import com.example.ui.theme.GoogleNavContainerLight
 import com.example.ui.theme.GoogleNavSelectedDark
@@ -176,9 +181,10 @@ fun OneUiHeader(
 }
 
 /**
- * Google Dialer style top bar (reference screenshot):
- * no title, just Search + overflow menu actions aligned to the end.
- * The overflow menu keeps the existing Speed dial / Settings / Add contact actions.
+ * Dialer top bar from the reference video:
+ * Add contact (+), speed-dial tag, Search and overflow, aligned to the end.
+ * The overflow menu matches the video: Speed dial numbers /
+ * Open to last viewed / Settings.
  */
 @Composable
 fun GoogleDialerTopBar(
@@ -186,6 +192,7 @@ fun GoogleDialerTopBar(
     onMenuSettings: () -> Unit,
     onAddContact: (() -> Unit)? = null,
     onSearch: (() -> Unit)? = null,
+    onOpenLastViewed: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -197,6 +204,32 @@ fun GoogleDialerTopBar(
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (onAddContact != null) {
+            IconButton(
+                onClick = onAddContact,
+                modifier = Modifier.testTag("add_contact_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add contact",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+
+        IconButton(
+            onClick = onMenuSpeedDial,
+            modifier = Modifier.testTag("speed_dial_button")
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.LocalOffer,
+                contentDescription = "Speed dial numbers",
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
         if (onSearch != null) {
             IconButton(
                 onClick = onSearch,
@@ -229,15 +262,128 @@ fun GoogleDialerTopBar(
                 onDismissRequest = { menuExpanded = false },
                 shape = RoundedCornerShape(18.dp)
             ) {
-                if (onAddContact != null) {
+                DropdownMenuItem(
+                    text = { Text("Speed dial numbers") },
+                    onClick = {
+                        menuExpanded = false
+                        onMenuSpeedDial()
+                    }
+                )
+                if (onOpenLastViewed != null) {
                     DropdownMenuItem(
-                        text = { Text("Add to contacts") },
+                        text = { Text("Open to last viewed") },
                         onClick = {
                             menuExpanded = false
-                            onAddContact()
+                            onOpenLastViewed()
                         }
                     )
                 }
+                DropdownMenuItem(
+                    text = { Text("Settings") },
+                    onClick = {
+                        menuExpanded = false
+                        onMenuSettings()
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * "Phone" header from the reference video (Recents / Contacts):
+ * the word Phone on the left, then filter / add, search and overflow
+ * actions on the right, all flat on the background.
+ */
+@Composable
+fun GooglePhoneHeader(
+    onMenuSpeedDial: () -> Unit,
+    onMenuSettings: () -> Unit,
+    onMenuClearLogs: (() -> Unit)? = null,
+    onAddContact: (() -> Unit)? = null,
+    onFilter: (() -> Unit)? = null,
+    onSearch: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Phone",
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp
+            ),
+            color = MaterialTheme.colorScheme.onBackground
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        if (onFilter != null) {
+            IconButton(
+                onClick = onFilter,
+                modifier = Modifier.testTag("phone_header_filter_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Tune,
+                    contentDescription = "Filter calls",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+
+        if (onAddContact != null) {
+            IconButton(
+                onClick = onAddContact,
+                modifier = Modifier.testTag("add_contact_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add contact",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+
+        if (onSearch != null) {
+            IconButton(
+                onClick = onSearch,
+                modifier = Modifier.testTag("phone_header_search_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+
+        Box {
+            IconButton(
+                onClick = { menuExpanded = true },
+                modifier = Modifier.testTag("menu_overflow_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Menu",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+                shape = RoundedCornerShape(18.dp)
+            ) {
                 DropdownMenuItem(
                     text = { Text("Speed dial numbers") },
                     onClick = {
@@ -252,8 +398,45 @@ fun GoogleDialerTopBar(
                         onMenuSettings()
                     }
                 )
+                if (onMenuClearLogs != null) {
+                    DropdownMenuItem(
+                        text = { Text("Delete all call logs", color = SamsungRed) },
+                        onClick = {
+                            menuExpanded = false
+                            onMenuClearLogs()
+                        }
+                    )
+                }
             }
         }
+    }
+}
+
+/**
+ * Video-call button from the reference video: a white circle with a
+ * yellow video camera, shown to the left of the call button once a
+ * number has been typed.
+ */
+@Composable
+fun GoogleVideoCallButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(56.dp)
+            .background(Color.White, CircleShape)
+            .clip(CircleShape)
+            .clickable { onClick() }
+            .testTag("video_call_button")
+    ) {
+        Icon(
+            imageVector = Icons.Default.Videocam,
+            contentDescription = "Video call",
+            tint = GoogleMeetYellow,
+            modifier = Modifier.size(28.dp)
+        )
     }
 }
 
@@ -288,7 +471,6 @@ fun SamsungDialButton(
         modifier = modifier
             .size(width = 104.dp, height = 68.dp)
             .clip(RoundedCornerShape(34.dp))
-            .background(bgColor)
             .testTag("dial_key_$digit")
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -306,6 +488,15 @@ fun SamsungDialButton(
                 )
             }
     ) {
+        // Press state in the video is a circular grey highlight behind the digit
+        if (isPressed) {
+            Box(
+                modifier = Modifier
+                    .size(62.dp)
+                    .background(bgColor, CircleShape)
+            )
+        }
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center

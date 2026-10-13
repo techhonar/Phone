@@ -52,6 +52,8 @@ import com.example.ui.PhoneViewModel
 import com.example.ui.components.ContactAvatar
 import com.example.ui.PhoneTab
 import com.example.ui.components.GoogleDialerTopBar
+import com.example.ui.components.GoogleVideoCallButton
+import com.example.ui.theme.GoogleBackspaceGrey
 import com.example.ui.components.SamsungCallButton
 import com.example.ui.components.SamsungDialButton
 import com.example.ui.theme.SamsungBlue
@@ -79,8 +81,32 @@ fun KeypadScreen(
             onMenuSpeedDial = { viewModel.openSpeedDialDialog() },
             onMenuSettings = { viewModel.openSettingsDialog() },
             onAddContact = { viewModel.openCreateContact(dialedDigits) },
-            onSearch = { viewModel.selectTab(PhoneTab.CONTACTS) }
+            onSearch = { viewModel.selectTab(PhoneTab.CONTACTS) },
+            onOpenLastViewed = { viewModel.selectTab(PhoneTab.RECENTS) }
         )
+
+        // T9 matching suggestions, as a list under the top bar (reference video)
+        AnimatedVisibility(
+            visible = t9Matches.isNotEmpty(),
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+            ) {
+                t9Matches.take(3).forEach { match ->
+                    T9ContactCard(
+                        match = match,
+                        query = dialedDigits,
+                        onClick = {
+                            viewModel.startCall(match.phone, match.name)
+                        }
+                    )
+                }
+            }
+        }
 
         // Large empty space above the keypad, as in the screenshot.
         // The dialed number (when present) sits at the bottom of this space.
@@ -98,7 +124,7 @@ fun KeypadScreen(
                 Text(
                     text = formattedDigits.ifEmpty { dialedDigits },
                     style = MaterialTheme.typography.headlineLarge.copy(
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Normal,
                         fontSize = if (dialedDigits.length > 12) 28.sp else 36.sp,
                         letterSpacing = 1.sp
                     ),
@@ -108,76 +134,6 @@ fun KeypadScreen(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.testTag("dialed_number_text")
                 )
-            }
-        }
-
-        // Action Pills when number entered ("Add to contacts")
-        AnimatedVisibility(
-            visible = dialedDigits.isNotEmpty(),
-            enter = fadeIn() + slideInVertically(),
-            exit = fadeOut()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier
-                        .clickable { viewModel.openCreateContact(dialedDigits) }
-                        .testTag("add_number_to_contacts_pill")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            tint = SamsungGreen,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Add to contacts",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = SamsungGreen
-                        )
-                    }
-                }
-            }
-        }
-
-        // T9 Matching Suggestions Bar
-        AnimatedVisibility(
-            visible = t9Matches.isNotEmpty(),
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-            ) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)
-                ) {
-                    items(t9Matches, key = { it.contactId }) { match ->
-                        T9ContactCard(
-                            match = match,
-                            query = dialedDigits,
-                            onClick = {
-                                viewModel.startCall(match.phone, match.name)
-                            }
-                        )
-                    }
-                }
             }
         }
 
@@ -304,6 +260,14 @@ fun KeypadScreen(
                 .padding(horizontal = 32.dp, vertical = 8.dp)
                 .height(64.dp)
         ) {
+            // Video call button on the left, as in the video (only with a number)
+            if (dialedDigits.isNotEmpty()) {
+                GoogleVideoCallButton(
+                    onClick = { viewModel.startCall(dialedDigits, null) },
+                    modifier = Modifier.align(Alignment.CenterStart)
+                )
+            }
+
             SamsungCallButton(
                 simSlot = simSlot,
                 onCallClick = {
@@ -316,12 +280,14 @@ fun KeypadScreen(
             )
 
             if (dialedDigits.isNotEmpty()) {
-                Box(
-                    contentAlignment = Alignment.Center,
+                // Backspace as a small grey pill, as in the video:
+                // tap = delete, long-press = clear all
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = GoogleBackspaceGrey,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .size(48.dp)
-                        .clip(CircleShape)
+                        .size(width = 52.dp, height = 36.dp)
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onTap = { viewModel.onBackspace() },
@@ -330,12 +296,14 @@ fun KeypadScreen(
                         }
                         .testTag("backspace_button")
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Backspace,
-                        contentDescription = "Backspace",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Backspace,
+                            contentDescription = "Backspace",
+                            tint = Color.Black.copy(alpha = 0.65f),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }
@@ -356,9 +324,9 @@ private fun T9ContactCard(
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 2.dp,
+        color = Color.Transparent,
         modifier = modifier
+            .fillMaxWidth()
             .clickable { onClick() }
             .testTag("t9_match_${match.contactId}")
     ) {
