@@ -24,46 +24,63 @@ class ExampleUnitTest {
 
     @Test
     fun testTextToT9Conversion() {
-        val t9Mom = RustPhoneBridge.textToT9("MOM")
-        assertEquals("666", t9Mom)
-
-        val t9John = RustPhoneBridge.textToT9("JOHN")
-        assertEquals("5646", t9John)
+        assertEquals("666", RustPhoneBridge.textToT9("MOM"))
+        assertEquals("5646", RustPhoneBridge.textToT9("JOHN"))
     }
 
     @Test
-    fun testT9PredictiveSearch() {
+    fun testT9PredictiveSearchWithOffsetsAndInitials() {
         val contacts = listOf(
-            Triple("1", "Mom ❤️", "+1 (555) 019-2831"),
+            Triple("1", "Mom", "+1 (555) 019-2831"),
             Triple("2", "Alex Johnson", "+1 (555) 234-5678"),
-            Triple("3", "Sarah Miller", "+1 (555) 876-5432")
+            Triple("3", "Sarah Miller", "+1 (555) 876-5432"),
+            Triple("4", "Aaron James", "+1 (555) 111-2222")
         )
 
-        // Typing 66 matches "Mom"
+        // Substring match
         val matches = RustPhoneBridge.searchT9("66", contacts)
         assertTrue(matches.isNotEmpty())
-        assertEquals("Mom ❤️", matches.first().name)
+        assertEquals("Mom", matches.first().name)
 
-        // Typing 253 matches "Alex" (2=A, 5=L, 3=E)
-        val alexMatches = RustPhoneBridge.searchT9("253", contacts)
-        assertTrue(alexMatches.isNotEmpty())
-        assertEquals("Alex Johnson", alexMatches.first().name)
+        // Offset spanning across space ("Alex Johnson": 'x' at index 3, 'J' at index 5 -> "95")
+        val crossSpace = RustPhoneBridge.searchT9("95", contacts)
+        val alexCross = crossSpace.firstOrNull { it.contactId == "2" }
+        assertNotNull(alexCross)
+        assertEquals(3, alexCross!!.matchStart)
+        assertEquals(3, alexCross.matchLength) // "x J"
+
+        // Word initials match ("25" -> A(2), J(5) in "Aaron James")
+        val initials = RustPhoneBridge.searchT9("25", contacts)
+        assertTrue(initials.any { it.contactId == "4" && it.matchType == "initials" })
     }
 
     @Test
-    fun testPhoneNumberFormatting() {
-        val formatted10 = RustPhoneBridge.formatPhoneNumber("5551234567")
-        assertEquals("(555) 123-4567", formatted10)
+    fun testPhoneNumberFormattingAndUssdPreservation() {
+        assertEquals("(555) 123-4567", RustPhoneBridge.formatPhoneNumber("5551234567"))
+        assertEquals("+1 (555) 123-4567", RustPhoneBridge.formatPhoneNumber("15551234567"))
+        // USSD/MMI codes must remain untouched
+        assertEquals("*#06#", RustPhoneBridge.formatPhoneNumber("*#06#"))
+        assertEquals("*86", RustPhoneBridge.formatPhoneNumber("*86"))
+    }
 
-        val formatted11 = RustPhoneBridge.formatPhoneNumber("15551234567")
-        assertEquals("+1 (555) 123-4567", formatted11)
+    @Test
+    fun testNormalizeForMatch() {
+        assertEquals("5552345678", RustPhoneBridge.normalizeForMatch("+1 (555) 234-5678"))
+        assertEquals("5552345678", RustPhoneBridge.normalizeForMatch("555-234-5678"))
     }
 
     @Test
     fun testDtmfPcmSynthesis() {
         val pcm = RustPhoneBridge.generateDtmfPcm16('5', sampleRate = 8000, durationMs = 100)
         assertNotNull(pcm)
-        // 8000 samples/sec * 0.1 sec * 2 bytes/sample = 1600 bytes
         assertEquals(1600, pcm.size)
+    }
+
+    @Test
+    fun testTelephonyAndConnectionDefaults() {
+        val status = com.example.telecom.TelephonyStatus()
+        assertEquals("Idle", status.osCallStateLabel)
+        assertEquals(false, status.isSimReady)
+        assertTrue(com.example.telecom.PhoneConnectionService.ACCOUNT_ID.isNotBlank())
     }
 }

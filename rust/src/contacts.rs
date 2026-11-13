@@ -15,6 +15,9 @@ pub struct ContactEntry {
 /// Formats raw digits into readable phone representation:
 /// e.g. "1234567890" -> "(123) 456-7890"
 pub fn format_phone_number(raw: &str) -> String {
+    if raw.contains('*') || raw.contains('#') {
+        return raw.to_string();
+    }
     let digits: Vec<char> = raw.chars().filter(|c| c.is_ascii_digit()).collect();
     match digits.len() {
         10 => format!(

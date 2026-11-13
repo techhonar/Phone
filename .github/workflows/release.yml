@@ -18,13 +18,11 @@ on:
         required: false
         default: |
           ### What's New:
-          - Samsung One UI 3×4 dialpad with live DTMF audio feedback and haptics
-          - High-performance T9 predictive contact search engine (Rust & Kotlin)
-          - Fullscreen in-call UI with live duration timer, mute, speaker, hold, record, and in-call DTMF dialpad
-          - Recents call history with All/Missed filters, Samsung call type indicators, and quick actions
-          - Contacts directory with A-Z alphabet navigation, favorites, and detailed sheets
-          - Places and Speed Dial hub for keys 2–9
-          - Offline local persistence powered by Room Database
+          - Real Android Telecom calling (`InCallService`, `TelecomManager.placeCall`, SIM selection, and `RoleManager.ROLE_DIALER` default Phone app support)
+          - Real OS Call Screening (`CallScreeningService`) to auto-reject blocked numbers
+          - Live `ContactsContract` and `CallLog.Calls` sync with `ContentObserver`, contact photos, and A–Z fast scroller
+          - Lock-screen-capable In-Call screen with pulsing incoming call ring, Quick-Decline SMS replies, Swap/Merge multi-call controls, Audio Route picker (Bluetooth/Speaker/Earpiece/Headset), and real in-call DTMF
+          - Samsung One UI 7 dialpad with ITU-T DTMF audio, USSD preservation, clipboard copy/paste, and upgraded Rust & Kotlin T9 predictive search
         type: string
       build_type:
         description: 'Artifacts to build and release'

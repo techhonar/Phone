@@ -1,16 +1,16 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,21 +18,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,435 +43,437 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ContactEntity
+import com.example.rust.RustPhoneBridge
 import com.example.ui.PhoneViewModel
 import com.example.ui.components.ContactAvatar
-import com.example.ui.components.GooglePhoneHeader
-import com.example.ui.theme.GoogleMeetYellow
-import com.example.ui.theme.GoogleSelectionBlue
+import com.example.ui.components.OneUiHeader
+import com.example.ui.components.PermissionEmptyStateCard
 import com.example.ui.theme.SamsungBlue
 import com.example.ui.theme.SamsungGreen
 import com.example.ui.theme.SamsungOrange
 import com.example.ui.theme.SamsungRed
+import kotlinx.coroutines.launch
 
-/**
- * Contacts, restyled after the reference video:
- * "Phone" header, an "Add your favorite contacts" card, a Groups card,
- * and contacts grouped by first letter into one large rounded card per
- * letter. Long-press enters multi-select with a floating Delete pill.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactsScreen(
     viewModel: PhoneViewModel,
+    onRequestPermissions: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val contacts by viewModel.filteredContacts.collectAsState()
     val favorites by viewModel.favoriteContacts.collectAsState()
     val searchQuery by viewModel.contactSearchQuery.collectAsState()
     val selectedContact by viewModel.selectedContactDetail.collectAsState()
+    val blockedNumbers by viewModel.blockedNumbers.collectAsState()
+    val permissionStatus by viewModel.permissionStatus.collectAsState()
 
-    var searchVisible by remember { mutableStateOf(false) }
-    var groupsExpanded by remember { mutableStateOf(false) }
-    var selectionMode by remember { mutableStateOf(false) }
-    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val blockedSet = remember(blockedNumbers) {
+        blockedNumbers.map { RustPhoneBridge.normalizeForMatch(it.phoneNumber) }.toSet()
+    }
 
     val groupedContacts = remember(contacts) {
-        contacts.groupBy { it.name.firstOrNull()?.uppercaseChar() ?: '#' }
-            .toSortedMap()
+        contacts.groupBy {
+            val ch = it.name.trim().firstOrNull()?.uppercaseChar() ?: '#'
+            if (ch in 'A'..'Z') ch else '#'
+        }.toSortedMap()
     }
 
-    val groupNames = remember(contacts) {
-        contacts.groupBy { it.groupName }.toSortedMap()
+    // Track section start indices inside LazyColumn for instant A-Z scrubbing
+    val letterIndices = remember(groupedContacts, favorites, searchQuery) {
+        val map = mutableMapOf<Char, Int>()
+        var idx = if (searchQuery.isBlank() && favorites.isNotEmpty()) 1 else 0
+        groupedContacts.forEach { (letter, list) ->
+            map[letter] = idx
+            idx += 1 + list.size
+        }
+        map
     }
 
-    fun toggleSelection(id: String) {
-        selectedIds = if (selectedIds.contains(id)) selectedIds - id else selectedIds + id
-        if (selectedIds.isEmpty()) selectionMode = false
-    }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var activeScrubLetter by remember { mutableStateOf<Char?>(null) }
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            if (selectionMode) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "${selectedIds.size} selected",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    TextButton(
-                        onClick = {
-                            selectionMode = false
-                            selectedIds = emptySet()
-                        },
-                        modifier = Modifier.testTag("contacts_selection_cancel")
-                    ) {
-                        Text("Cancel", color = MaterialTheme.colorScheme.onBackground)
-                    }
-                }
-            } else {
-                GooglePhoneHeader(
-                    onMenuSpeedDial = { viewModel.openSpeedDialDialog() },
-                    onMenuSettings = { viewModel.openSettingsDialog() },
-                    onAddContact = { viewModel.openCreateContact() },
-                    onSearch = { searchVisible = !searchVisible }
-                )
-            }
+        OneUiHeader(
+            title = "Contacts",
+            subtitle = if (permissionStatus.hasReadContacts) "${contacts.size} contacts" else "Contacts access needed",
+            onMenuSpeedDial = { viewModel.openSpeedDialDialog() },
+            onMenuSettings = { viewModel.openSettingsDialog() },
+            onMenuStats = { viewModel.openCallStatsScreen() },
+            onAddContact = { viewModel.openCreateContact() }
+        )
 
-        // Search Bar (shown from the header search icon, as in the video)
-        AnimatedVisibility(visible = searchVisible || searchQuery.isNotEmpty()) {
-            Surface(
+        if (!permissionStatus.hasReadContacts && contacts.isEmpty()) {
+            PermissionEmptyStateCard(
+                icon = Icons.Default.Contacts,
+                title = "Access Device Contacts",
+                description = "Allow Contacts permission to browse, search with T9, favorite, and call your real address book contacts.",
+                buttonText = "Allow Contacts Access",
+                onGrantClick = onRequestPermissions
+            )
+            return
+        }
+
+        // Search Bar
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 6.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant
+                    .padding(horizontal = 14.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search contacts",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { viewModel.setContactSearchQuery(it) },
+                    placeholder = { Text("Search name, number, or email") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent
+                    ),
+                    singleLine = true,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .weight(1f)
+                        .testTag("contacts_search_input")
+                )
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { viewModel.setContactSearchQuery("") }) {
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = "Clear search",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            if (contacts.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = if (searchQuery.isNotBlank()) "No matching contacts" else "No contacts found",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 16.dp, end = 28.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { viewModel.setContactSearchQuery(it) },
-                        placeholder = { Text("Search name or number") },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color.Transparent,
-                            unfocusedBorderColor = Color.Transparent
-                        ),
-                        singleLine = true,
+                    if (searchQuery.isBlank() && favorites.isNotEmpty()) {
+                        item(key = "favorites_strip") {
+                            Text(
+                                text = "FAVORITES",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                ),
+                                color = SamsungGreen,
+                                modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 8.dp)
+                            )
+
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                contentPadding = PaddingValues(bottom = 12.dp)
+                            ) {
+                                items(favorites, key = { "fav_${it.id}" }) { contact ->
+                                    FavoriteContactCard(
+                                        contact = contact,
+                                        onClick = { viewModel.openContactDetail(contact) },
+                                        onCallClick = { viewModel.startCall(contact.phoneNumber) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    groupedContacts.forEach { (initial, contactList) ->
+                        item(key = "header_$initial") {
+                            Text(
+                                text = initial.toString(),
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = SamsungGreen,
+                                modifier = Modifier.padding(start = 10.dp, top = 10.dp, bottom = 4.dp)
+                            )
+                        }
+
+                        items(contactList, key = { "${it.id}_${it.phoneNumber}" }) { contact ->
+                            ContactRowItem(
+                                contact = contact,
+                                onClick = { viewModel.openContactDetail(contact) },
+                                onCallClick = { viewModel.startCall(contact.phoneNumber) }
+                            )
+                        }
+                    }
+                }
+
+                // A-Z Fast Scroller Rail
+                val letters = remember(groupedContacts) { groupedContacts.keys.toList() }
+                if (letters.size > 3) {
+                    AlphabetFastScroller(
+                        letters = letters,
+                        onLetterSelected = { letter ->
+                            activeScrubLetter = letter
+                            letterIndices[letter]?.let { targetIdx ->
+                                scope.launch { listState.scrollToItem(targetIdx) }
+                            }
+                        },
+                        onScrubEnd = { activeScrubLetter = null },
                         modifier = Modifier
-                            .weight(1f)
-                            .testTag("contacts_search_input")
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 4.dp, top = 12.dp, bottom = 12.dp)
                     )
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.setContactSearchQuery("") }) {
-                            Icon(
-                                imageVector = Icons.Default.Clear,
-                                contentDescription = "Clear search",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                }
+
+                // Floating Scrub Letter Bubble
+                activeScrubLetter?.let { ch ->
+                    Surface(
+                        shape = CircleShape,
+                        color = SamsungGreen,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(68.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = ch.toString(),
+                                color = Color.White,
+                                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
                             )
                         }
                     }
                 }
             }
         }
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 8.dp)
-        ) {
-            // Favorites card (reference video: "Add your favorite contacts")
-            if (searchQuery.isBlank() && !selectionMode) {
-                item(key = "favorites_card") {
-                    Surface(
-                        shape = RoundedCornerShape(28.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 10.dp)
-                    ) {
-                        Column {
-                            if (favorites.isEmpty()) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = SamsungOrange,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(14.dp))
-                                    Text(
-                                        text = "Add your favorite contacts",
-                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                                        color = SamsungOrange
-                                    )
-                                }
-                            } else {
-                                favorites.forEachIndexed { index, contact ->
-                                    if (index > 0) {
-                                        HorizontalDivider(
-                                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-                                            modifier = Modifier.padding(start = 72.dp, end = 16.dp)
-                                        )
-                                    }
-                                    ContactCardRow(
-                                        contact = contact,
-                                        selectionMode = false,
-                                        isSelected = false,
-                                        onTap = { viewModel.openContactDetail(contact) },
-                                        onLongPress = {},
-                                        modifier = Modifier.testTag("fav_contact_${contact.id}")
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Groups card (reference video)
-                item(key = "groups_card") {
-                    Surface(
-                        shape = RoundedCornerShape(28.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 4.dp)
-                    ) {
-                        Column {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { groupsExpanded = !groupsExpanded }
-                                    .padding(horizontal = 16.dp, vertical = 16.dp)
-                                    .testTag("groups_row"),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Group,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Text(
-                                    text = "Groups",
-                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            if (groupsExpanded) {
-                                groupNames.forEach { (groupName, members) ->
-                                    HorizontalDivider(
-                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-                                        modifier = Modifier.padding(start = 54.dp, end = 16.dp)
-                                    )
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Spacer(modifier = Modifier.width(38.dp))
-                                        Text(
-                                            text = groupName,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Text(
-                                            text = members.size.toString(),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Alphabetically grouped cards, one card per letter (reference video)
-            groupedContacts.forEach { (initial, contactList) ->
-                item(key = "header_$initial") {
-                    Text(
-                        text = initial.toString(),
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Normal),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 8.dp, top = 14.dp, bottom = 6.dp)
-                    )
-                }
-
-                item(key = "card_$initial") {
-                    Surface(
-                        shape = RoundedCornerShape(28.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column {
-                            contactList.forEachIndexed { index, contact ->
-                                if (index > 0) {
-                                    HorizontalDivider(
-                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-                                        modifier = Modifier.padding(start = 72.dp, end = 16.dp)
-                                    )
-                                }
-                                ContactCardRow(
-                                    contact = contact,
-                                    selectionMode = selectionMode,
-                                    isSelected = selectedIds.contains(contact.id),
-                                    onTap = {
-                                        if (selectionMode) {
-                                            toggleSelection(contact.id)
-                                        } else {
-                                            viewModel.openContactDetail(contact)
-                                        }
-                                    },
-                                    onLongPress = {
-                                        if (!selectionMode) {
-                                            selectionMode = true
-                                            selectedIds = setOf(contact.id)
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            item { Spacer(modifier = Modifier.height(72.dp)) }
-        }
-        }
-
-        // Floating Delete pill in selection mode (reference video)
-        if (selectionMode && selectedIds.isNotEmpty()) {
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shadowElevation = 6.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 18.dp)
-                    .clickable {
-                        viewModel.deleteContacts(selectedIds)
-                        selectionMode = false
-                        selectedIds = emptySet()
-                    }
-                    .testTag("contacts_delete_selected_button")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete selected",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Delete",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-        }
     }
 
-    // Contact Detail Bottom Sheet
     selectedContact?.let { contact ->
+        val isBlocked = RustPhoneBridge.normalizeForMatch(contact.phoneNumber).let {
+            it.isNotEmpty() && it in blockedSet
+        }
         ContactDetailSheet(
             contact = contact,
+            isBlocked = isBlocked,
             onDismiss = { viewModel.closeContactDetail() },
             onCall = {
                 viewModel.closeContactDetail()
-                viewModel.startCall(contact.phoneNumber, contact.name)
+                viewModel.startCall(contact.phoneNumber)
             },
+            onMessage = {
+                viewModel.closeContactDetail()
+                viewModel.sendMessage(contact.phoneNumber)
+            },
+            onEmail = { viewModel.sendEmail(contact.email) },
             onToggleFavorite = { viewModel.toggleFavoriteContact(contact) },
-            onDelete = { viewModel.deleteContact(contact.id) }
+            onToggleBlock = {
+                if (isBlocked) viewModel.unblockNumber(contact.phoneNumber)
+                else viewModel.blockNumber(contact.phoneNumber, contact.name)
+            },
+            onDelete = { viewModel.deleteContact(contact) }
         )
     }
 }
 
 @Composable
-private fun ContactCardRow(
-    contact: ContactEntity,
-    selectionMode: Boolean,
-    isSelected: Boolean,
-    onTap: () -> Unit,
-    onLongPress: () -> Unit,
+private fun AlphabetFastScroller(
+    letters: List<Char>,
+    onLetterSelected: (Char) -> Unit,
+    onScrubEnd: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    var totalHeightPx by remember { mutableStateOf(1) }
+
+    Column(
         modifier = modifier
-            .fillMaxWidth()
-            .pointerInput(contact.id, selectionMode) {
-                detectTapGestures(
-                    onTap = { onTap() },
-                    onLongPress = { onLongPress() }
+            .fillMaxHeight()
+            .width(24.dp)
+            .onSizeChanged { totalHeightPx = it.height.coerceAtLeast(1) }
+            .pointerInput(letters) {
+                detectVerticalDragGestures(
+                    onDragEnd = { onScrubEnd() },
+                    onDragCancel = { onScrubEnd() }
+                ) { change, _ ->
+                    change.consume()
+                    val fraction = (change.position.y / totalHeightPx.toFloat()).coerceIn(0f, 0.999f)
+                    val index = (fraction * letters.size).toInt().coerceIn(0, letters.lastIndex)
+                    onLetterSelected(letters[index])
+                }
+            },
+        verticalArrangement = Arrangement.SpaceEvenly,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        letters.forEach { letter ->
+            Text(
+                text = letter.toString(),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clickable {
+                        onLetterSelected(letter)
+                        onScrubEnd()
+                    }
+                    .padding(vertical = 1.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FavoriteContactCard(
+    contact: ContactEntity,
+    onClick: () -> Unit,
+    onCallClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 1.dp,
+        modifier = modifier
+            .width(110.dp)
+            .clickable { onClick() }
+            .testTag("fav_contact_${contact.id}")
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            ContactAvatar(
+                name = contact.name,
+                photoUri = contact.photoUri,
+                avatarColorHex = contact.avatarColorHex,
+                size = 50
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = contact.name,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            IconButton(
+                onClick = onCallClick,
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(SamsungGreen.copy(alpha = 0.15f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Call,
+                    contentDescription = "Call ${contact.name}",
+                    tint = SamsungGreen,
+                    modifier = Modifier.size(16.dp)
                 )
             }
-            .padding(horizontal = 16.dp, vertical = 11.dp)
-            .testTag("contact_item_${contact.id}"),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (selectionMode) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(42.dp)
-                    .background(if (isSelected) GoogleSelectionBlue else Color.Transparent, CircleShape)
-                    .then(
-                        if (isSelected) Modifier else Modifier.border(1.5.dp, Color.Gray, CircleShape)
-                    )
-            ) {
-                if (isSelected) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Selected",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-        } else {
-            ContactAvatar(name = contact.name, avatarColorHex = contact.avatarColorHex, size = 42)
         }
+    }
+}
 
-        Spacer(modifier = Modifier.width(14.dp))
+@Composable
+private fun ContactRowItem(
+    contact: ContactEntity,
+    onClick: () -> Unit,
+    onCallClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .clickable { onClick() }
+            .testTag("contact_item_${contact.id}")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ContactAvatar(
+                name = contact.name,
+                photoUri = contact.photoUri,
+                avatarColorHex = contact.avatarColorHex,
+                size = 44
+            )
+            Spacer(modifier = Modifier.width(14.dp))
 
-        Text(
-            text = contact.name,
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = contact.name,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${contact.phoneLabel} • ${contact.phoneNumber}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            IconButton(
+                onClick = onCallClick,
+                modifier = Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .background(SamsungGreen.copy(alpha = 0.12f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Call,
+                    contentDescription = "Call ${contact.name}",
+                    tint = SamsungGreen,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
     }
 }
 
@@ -477,9 +481,13 @@ private fun ContactCardRow(
 @Composable
 private fun ContactDetailSheet(
     contact: ContactEntity,
+    isBlocked: Boolean,
     onDismiss: () -> Unit,
     onCall: () -> Unit,
+    onMessage: () -> Unit,
+    onEmail: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onToggleBlock: () -> Unit,
     onDelete: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -497,28 +505,28 @@ private fun ContactDetailSheet(
                 .padding(bottom = 36.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Avatar
-            ContactAvatar(name = contact.name, avatarColorHex = contact.avatarColorHex, size = 76)
+            ContactAvatar(
+                name = contact.name,
+                photoUri = contact.photoUri,
+                avatarColorHex = contact.avatarColorHex,
+                size = 82
+            )
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Name
             Text(
                 text = contact.name,
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            // Phone
             Text(
-                text = contact.phoneNumber,
+                text = "${contact.phoneLabel} • ${contact.phoneNumber}",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
-            // Quick Action Buttons Row (Call, Text, Video, Favorite),
-            // using the flat round-button palette from the reference video
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
@@ -526,36 +534,35 @@ private fun ContactDetailSheet(
                 DetailActionCircle(
                     icon = Icons.Default.Call,
                     label = "Call",
-                    bgColor = MaterialTheme.colorScheme.surfaceVariant,
-                    iconTint = SamsungGreen,
+                    bgColor = SamsungGreen,
+                    iconTint = Color.White,
                     onClick = onCall
                 )
                 DetailActionCircle(
-                    icon = Icons.Default.Chat,
+                    icon = Icons.AutoMirrored.Filled.Chat,
                     label = "Message",
-                    bgColor = MaterialTheme.colorScheme.surfaceVariant,
-                    iconTint = SamsungBlue,
-                    onClick = { /* Simulated SMS */ }
-                )
-                DetailActionCircle(
-                    icon = Icons.Default.Videocam,
-                    label = "Video",
-                    bgColor = Color.White,
-                    iconTint = GoogleMeetYellow,
-                    onClick = onCall
+                    bgColor = SamsungBlue,
+                    iconTint = Color.White,
+                    onClick = onMessage
                 )
                 DetailActionCircle(
                     icon = if (contact.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                    label = if (contact.isFavorite) "Favorite" else "Add Fav",
+                    label = if (contact.isFavorite) "Starred" else "Favorite",
                     bgColor = MaterialTheme.colorScheme.surfaceVariant,
-                    iconTint = SamsungOrange,
+                    iconTint = if (contact.isFavorite) SamsungOrange else MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = onToggleFavorite
+                )
+                DetailActionCircle(
+                    icon = Icons.Default.Block,
+                    label = if (isBlocked) "Unblock" else "Block",
+                    bgColor = MaterialTheme.colorScheme.surfaceVariant,
+                    iconTint = if (isBlocked) SamsungRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = onToggleBlock
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
-            // Additional Details Card (Email, Notes, Group)
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -563,32 +570,48 @@ private fun ContactDetailSheet(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     if (contact.email.isNotEmpty()) {
-                        Text(
-                            text = "Email",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = contact.email,
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onEmail() },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Email,
+                                contentDescription = null,
+                                tint = SamsungBlue,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Email",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = contact.email,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
                     }
 
                     Text(
-                        text = "Group",
+                        text = "Phone Type",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = contact.groupName,
+                        text = contact.phoneLabel,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
                     if (contact.notes.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = "Notes",
                             style = MaterialTheme.typography.labelSmall,
@@ -605,7 +628,6 @@ private fun ContactDetailSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Delete Contact Button
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = SamsungRed.copy(alpha = 0.1f),
@@ -614,7 +636,7 @@ private fun ContactDetailSheet(
                     .clickable { onDelete() }
             ) {
                 Row(
-                    modifier = Modifier.padding(vertical = 12.dp),
+                    modifier = Modifier.padding(vertical = 13.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -638,7 +660,7 @@ private fun ContactDetailSheet(
 
 @Composable
 private fun DetailActionCircle(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     bgColor: Color,
     iconTint: Color,
@@ -646,7 +668,9 @@ private fun DetailActionCircle(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { onClick() }
+        modifier = Modifier
+            .defaultMinSize(minWidth = 56.dp, minHeight = 48.dp)
+            .clickable { onClick() }
     ) {
         Box(
             contentAlignment = Alignment.Center,
@@ -658,7 +682,7 @@ private fun DetailActionCircle(
                 imageVector = icon,
                 contentDescription = label,
                 tint = iconTint,
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier.size(25.dp)
             )
         }
         Spacer(modifier = Modifier.height(6.dp))

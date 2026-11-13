@@ -1,5 +1,6 @@
 //! High-performance T9 Predictive Keypad Matching Engine
-//! Converts text to phone dialpad digits (ITU-T E.161 standard) and matches search patterns.
+//! Converts text to phone dialpad digits (ITU-T E.161 standard), maps exact character offsets,
+//! and supports substring + word-initial predictive matching.
 
 use serde::{Deserialize, Serialize};
 
@@ -34,10 +35,30 @@ pub struct T9MatchResult {
     pub contact_id: String,
     pub name: String,
     pub phone: String,
-    pub match_type: String, // "name" or "number"
+    pub match_type: String, // "name", "initials", or "number"
     pub match_start: usize,
     pub match_length: usize,
     pub score: i32,
+}
+
+/// Maps each T9 digit back to its char index in the original string.
+fn indexed_t9(text: &str) -> (String, Vec<usize>) {
+    let mut t9 = String::new();
+    let mut indices = Vec::new();
+    for (idx, ch) in text.chars().enumerate() {
+        if let Some(d) = char_to_t9(ch) {
+            t9.push(d);
+            indices.push(idx);
+        }
+    }
+    (t9, indices)
+}
+
+/// Extracts word initials in T9 digits (e.g., "Alex Johnson" -> "25").
+fn word_initials_t9(text: &str) -> String {
+    text.split_whitespace()
+        .filter_map(|w| w.chars().next().and_then(char_to_t9))
+        .collect()
 }
 
 /// Performs T9 predictive search over a list of contacts given dialed digits.
@@ -49,32 +70,62 @@ pub fn search_contacts(
         return Vec::new();
     }
 
-    let clean_query = query_digits.trim();
+    let clean_query: String = query_digits
+        .trim()
+        .chars()
+        .filter(|c| c.is_ascii_digit())
+        .collect();
+    if clean_query.is_empty() {
+        return Vec::new();
+    }
+
     let mut results = Vec::new();
 
     for (id, name, phone) in contacts {
         let mut best_match: Option<T9MatchResult> = None;
 
-        // 1. Check Name T9 match
-        let name_t9 = text_to_t9(name);
-        if let Some(pos) = name_t9.find(clean_query) {
-            // Find character index in original name
-            let score = if pos == 0 { 100 } else { 80 } - (pos as i32 * 2);
+        // 1. Check Name T9 substring match with accurate original char offsets
+        let (name_t9, char_indices) = indexed_t9(name);
+        if let Some(pos) = name_t9.find(&clean_query) {
+            let orig_start = char_indices[pos];
+            let orig_end = char_indices[pos + clean_query.len() - 1];
+            let orig_len = (orig_end - orig_start) + 1;
+            let score = if pos == 0 { 110 } else { 85 } - (pos as i32 * 2);
+
             best_match = Some(T9MatchResult {
                 contact_id: id.clone(),
                 name: name.clone(),
                 phone: phone.clone(),
                 match_type: "name".to_string(),
-                match_start: pos,
-                match_length: clean_query.len(),
+                match_start: orig_start,
+                match_length: orig_len,
                 score,
             });
         }
 
-        // 2. Check Number match (digits dialed directly match contact phone)
+        // 2. Check word initials match (e.g. "25" -> "Alex Johnson")
+        if clean_query.len() >= 2 {
+            let initials = word_initials_t9(name);
+            if initials.starts_with(&clean_query) {
+                let init_score = 92;
+                if best_match.as_ref().map_or(true, |m| init_score > m.score) {
+                    best_match = Some(T9MatchResult {
+                        contact_id: id.clone(),
+                        name: name.clone(),
+                        phone: phone.clone(),
+                        match_type: "initials".to_string(),
+                        match_start: 0,
+                        match_length: 1,
+                        score: init_score,
+                    });
+                }
+            }
+        }
+
+        // 3. Check Number match (digits dialed directly match contact phone)
         let clean_phone = normalize_number(phone);
-        if let Some(pos) = clean_phone.find(clean_query) {
-            let num_score = if pos == 0 { 95 } else { 70 } - (pos as i32 * 2);
+        if let Some(pos) = clean_phone.find(&clean_query) {
+            let num_score = if pos == 0 { 98 } else { 75 } - (pos as i32);
             if best_match.as_ref().map_or(true, |m| num_score > m.score) {
                 best_match = Some(T9MatchResult {
                     contact_id: id.clone(),
@@ -93,7 +144,7 @@ pub fn search_contacts(
         }
     }
 
-    // Sort descending by score
-    results.sort_by(|a, b| b.score.cmp(&a.score));
+    // Sort descending by score, then alphabetically
+    results.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.name.cmp(&b.name)));
     results
 }

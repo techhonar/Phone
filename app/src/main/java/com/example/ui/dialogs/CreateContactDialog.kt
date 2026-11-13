@@ -9,10 +9,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -26,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.theme.SamsungGreen
@@ -34,21 +38,21 @@ import com.example.ui.theme.SamsungGreen
 fun CreateContactDialog(
     initialNumber: String = "",
     onDismiss: () -> Unit,
-    onSave: (name: String, number: String, email: String, group: String, notes: String) -> Unit
+    onSave: (name: String, number: String, email: String, phoneLabel: String, notes: String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var number by remember { mutableStateOf(initialNumber) }
     var email by remember { mutableStateOf("") }
-    var group by remember { mutableStateOf("Family") }
+    var phoneLabel by remember { mutableStateOf("Mobile") }
     var notes by remember { mutableStateOf("") }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(26.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(8.dp)
                 .testTag("create_contact_dialog")
         ) {
             Column(
@@ -80,18 +84,36 @@ fun CreateContactDialog(
                     value = number,
                     onValueChange = { number = it },
                     label = { Text("Phone Number") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("contact_phone_input")
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Mobile", "Home", "Work").forEach { label ->
+                        FilterChip(
+                            selected = phoneLabel == label,
+                            onClick = { phoneLabel = label },
+                            label = { Text(label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = SamsungGreen
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
                     label = { Text("Email (Optional)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -106,7 +128,7 @@ fun CreateContactDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -123,7 +145,7 @@ fun CreateContactDialog(
                     Button(
                         onClick = {
                             if (name.isNotBlank() && number.isNotBlank()) {
-                                onSave(name, number, email, group, notes)
+                                onSave(name, number, email, phoneLabel, notes)
                             }
                         },
                         enabled = name.isNotBlank() && number.isNotBlank(),

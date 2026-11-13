@@ -44,31 +44,6 @@ interface PhoneDao {
     @Query("UPDATE contacts SET isFavorite = :isFavorite WHERE id = :id")
     suspend fun toggleFavorite(id: String, isFavorite: Boolean)
 
-    // --- Call Logs ---
-    @Query("SELECT * FROM call_logs ORDER BY timestamp DESC")
-    fun getAllCallLogs(): Flow<List<CallLogEntity>>
-
-    @Query("SELECT * FROM call_logs WHERE callType = 'MISSED' ORDER BY timestamp DESC")
-    fun getMissedCallLogs(): Flow<List<CallLogEntity>>
-
-    @Query("SELECT * FROM call_logs WHERE phoneNumber = :phoneNumber ORDER BY timestamp DESC")
-    fun getCallLogsForNumber(phoneNumber: String): Flow<List<CallLogEntity>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCallLog(callLog: CallLogEntity)
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCallLogs(callLogs: List<CallLogEntity>)
-
-    @Delete
-    suspend fun deleteCallLog(callLog: CallLogEntity)
-
-    @Query("DELETE FROM call_logs WHERE id = :id")
-    suspend fun deleteCallLogById(id: String)
-
-    @Query("DELETE FROM call_logs")
-    suspend fun clearAllCallLogs()
-
     // --- Speed Dials ---
     @Query("SELECT * FROM speed_dials ORDER BY keyDigit ASC")
     fun getAllSpeedDials(): Flow<List<SpeedDialEntity>>
@@ -82,16 +57,39 @@ interface PhoneDao {
     @Query("DELETE FROM speed_dials WHERE keyDigit = :digit")
     suspend fun removeSpeedDial(digit: Int)
 
+    @Query("DELETE FROM speed_dials")
+    suspend fun clearAllSpeedDials()
+
     // --- Blocked Numbers ---
     @Query("SELECT * FROM blocked_numbers ORDER BY timestamp DESC")
     fun getAllBlockedNumbers(): Flow<List<BlockedNumberEntity>>
 
-    @Query("SELECT COUNT(*) FROM blocked_numbers WHERE phoneNumber = :phone")
-    suspend fun isNumberBlocked(phone: String): Int
+    @Query(
+        "SELECT * FROM blocked_numbers " +
+            "WHERE normalizedNumber = :normalizedPhone OR phoneNumber = :rawPhone " +
+            "LIMIT 1"
+    )
+    suspend fun findBlockedNumber(normalizedPhone: String, rawPhone: String): BlockedNumberEntity?
+
+    @Query(
+        "SELECT COUNT(*) > 0 FROM blocked_numbers " +
+            "WHERE normalizedNumber = :normalizedPhone OR phoneNumber = :rawPhone"
+    )
+    suspend fun isNumberBlocked(normalizedPhone: String, rawPhone: String): Boolean
+
+    @Query(
+        "UPDATE blocked_numbers " +
+            "SET blockedCount = blockedCount + 1, lastBlockedAt = :timestamp " +
+            "WHERE normalizedNumber = :normalizedPhone"
+    )
+    suspend fun incrementBlockedCount(
+        normalizedPhone: String,
+        timestamp: Long = System.currentTimeMillis()
+    )
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun blockNumber(blocked: BlockedNumberEntity)
 
-    @Query("DELETE FROM blocked_numbers WHERE phoneNumber = :phone")
-    suspend fun unblockNumber(phone: String)
+    @Query("DELETE FROM blocked_numbers WHERE normalizedNumber = :normalizedPhone OR phoneNumber = :rawPhone")
+    suspend fun unblockNumber(normalizedPhone: String, rawPhone: String)
 }

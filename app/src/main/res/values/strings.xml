@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">Samsung Phone</string>
+    <string name="channel_incoming_call_name">Incoming Calls</string>
+    <string name="channel_ongoing_call_name">Ongoing Calls</string>
+    <string name="default_dialer_prompt">Set as default Phone app to handle real calls</string>
+    <string name="permissions_prompt">Allow Phone, Contacts, and Call Log permissions for full access</string>
+    <string name="speed_dial_title">Speed Dial</string>
+    <string name="speed_dial_subtitle">Keys 2–9 • Press &amp; hold on keypad</string>
+    <string name="call_stats_title">Call Statistics</string>
+    <string name="call_stats_subtitle">Talk time, top contacts &amp; trends</string>
 </resources>
